@@ -6,9 +6,9 @@
 
 ## 1. Problem Statement
 
-Home Credit melayani segmen **unbanked dan underserved** — calon nasabah yang sebagian besar tidak memiliki riwayat kredit formal di bank. Tanpa credit score konvensional, lembaga sulit menilai siapa yang layak diberi pinjaman, sehingga berisiko menolak nasabah yang sebenarnya baik atau menyetujui nasabah yang akan gagal bayar.
+Home Credit melayani segmen **unbanked dan underserved** yaitu calon nasabah yang sebagian besar tidak memiliki riwayat kredit formal di bank. Tanpa credit score konvensional, lembaga sulit menilai siapa yang layak diberi pinjaman, sehingga berisiko menolak nasabah yang sebenarnya baik atau menyetujui nasabah yang akan gagal bayar.
 
-Tujuan proyek ini adalah membangun model yang memperkirakan **Probability of Default (PD)** — seberapa besar kemungkinan seorang nasabah gagal melunasi pinjamannya — dengan memanfaatkan **alternative data**: riwayat transaksi eksternal (credit bureau) dan internal (pengajuan sebelumnya, cicilan, kartu kredit).
+Tujuan proyek ini adalah membangun model yang memperkirakan **Probability of Default (PD)** atau seberapa besar kemungkinan seorang nasabah gagal melunasi pinjamannya dengan memanfaatkan **alternative data** seperti riwayat transaksi eksternal (credit bureau) dan internal (pengajuan sebelumnya, cicilan, kartu kredit).
 
 Dua tantangan utama:
 
@@ -31,7 +31,7 @@ Dua tantangan utama:
 
 ![Entity Relational Diagram](Entity-Relational-Diagram.png)
 
-*Skema relasi 8 tabel: tabel aplikasi sebagai pusat, terhubung ke tabel transaksi lewat kunci `SK_ID_CURR`, `SK_ID_BUREAU`, dan `SK_ID_PREV`.*
+_Skema relasi 8 tabel: tabel aplikasi sebagai pusat, terhubung ke tabel transaksi lewat kunci `SK_ID_CURR`, `SK_ID_BUREAU`, dan `SK_ID_PREV`._
 
 Data terdiri dari **8 tabel relasional** yang berpusat pada tabel aplikasi (307.511 nasabah train, 48.744 test), terhubung ke tabel pendukung lewat kunci `SK_ID_CURR`, `SK_ID_BUREAU`, dan `SK_ID_PREV`: bureau & bureau_balance (kredit di luar), previous_application (pengajuan internal), serta POS_CASH_balance, installments_payments, dan credit_card_balance (riwayat pembayaran bulanan).
 
@@ -61,23 +61,33 @@ Prinsip yang dijaga sepanjang pipeline: **train dan test diproses terpisah** (me
 
 ![Target imbalance](images/eda_target_imbalance.png)
 
+Mayoritas nasabah tergolong mampu melunasi pinjaman (Kelas 0 / Lancar mencakup 91,93% atau 282.686 nasabah), sedangkan nasabah yang mengalami kendala pembayaran (Kelas 1 / Default) hanya porsinya 8,07% (24.825 nasabah).
+
 **Distribusi fitur numerik & skor eksternal terhadap target:**
 
 ![Distribusi fitur numerik](images/eda_numeric_distributions.png)
+
+Variable skor eksternal (EXT_SOURCE_1, 2, 3) serta faktor demografi/stabilitas (DAYS_BIRTH dan DAYS_EMPLOYED) menunjukkan daya pemisah (separability) paling jelas. Nasabah berusia muda, bermasa kerja singkat (< 5 tahun), atau memiliki skor eksternal rendah terbukti mendominasi kelompok berisiko tinggi (TARGET = 1).
 
 **Default rate per kategori:**
 
 ![Default rate kategorikal](images/eda_categorical_default_rate.png)
 
+Profil dengan tingkat default tertinggi ditemukan pada nasabah laki-laki (CODE_GENDER: M 10%), pengaju pinjaman tunai (NAME_CONTRACT_TYPE: Cash loans 8,3%), berpendidikan rendah (NAME_EDUCATION_TYPE: Lower secondary 11%), berstatus belum menikah atau civil marriage (NAME_FAMILY_STATUS 10%), serta memiliki sumber pendapatan kerja umum (NAME_INCOME_TYPE: Working 9,5%). Berdasarkan jenis pekerjaan (OCCUPATION_TYPE), kelompok pekerja kerah biru dan lapangan seperti Low-skill Laborers (>17%), Drivers (11%), dan Waiters/barmen staff (11%) mencatatkan risiko gagal bayar paling dominan.
+
 **Correlation heatmap fitur kunci vs TARGET:**
 
 ![Correlation heatmap](images/eda_correlation_heatmap.png)
 
-- **Skor eksternal adalah prediktor terkuat.** `EXT_SOURCE_1/2/3` memiliki effect size kategori "Besar" (rank-biserial r sekitar −0,31 hingga −0,36). Semakin rendah skor eksternal, semakin tinggi risiko default. *Artinya:* skor pihak ketiga ini menyimpan informasi kelayakan kredit yang sangat padat, meski deskripsi bisnisnya tidak dijelaskan di dokumentasi dataset.
-- **Demografi & stabilitas kerja berpengaruh sedang.** Nasabah default cenderung lebih muda (median ~39 vs ~43 tahun) dan bermasa kerja lebih pendek (~3,3 vs ~4,6 tahun). *Artinya:* stabilitas hidup berkorelasi dengan disiplin bayar.
-- **Nominal pinjaman/pendapatan lemah secara mandiri.** `AMT_INCOME_TOTAL`, `AMT_CREDIT`, dan `AMT_ANNUITY` nyaris tidak membedakan default vs lancar. *Artinya:* besar-kecilnya pinjaman bukan penentu risiko — yang penting adalah rasio dan perilaku bayar.
-- **Fitur kategorikal bersinyal lemah sendiri-sendiri, tetapi berguna dalam kombinasi.** Profil berisiko tinggi: laki-laki, pendidikan rendah, pekerja kasar (Low-skill Laborers >17%). Chi-Square signifikan tapi Cramér's V kecil. *Artinya:* model tree-based dapat menggabungkan banyak sinyal lemah ini menjadi segmen risiko yang tajam.
-- **Ketiadaan data pun bermakna (MNAR).** Nasabah tanpa riwayat bureau punya default rate lebih tinggi (10,1% vs 7,7%). *Artinya:* missing value dijadikan fitur, bukan dibuang atau di-impute sembarangan.
+- `EXT_SOURCE_1/2/3` memiliki effect size kategori "Besar" (rank-biserial r sekitar −0,31 hingga −0,36). Semakin rendah skor eksternal, semakin tinggi risiko default. Artinya skor pihak ketiga ini menyimpan informasi kelayakan kredit yang sangat padat, meski deskripsi bisnisnya tidak dijelaskan di dokumentasi dataset.
+
+- Nasabah default cenderung lebih muda (median 39 vs 43 tahun) dan bermasa kerja lebih pendek (3,3 vs 4,6 tahun). _Artinya:_ stabilitas hidup berkorelasi dengan disiplin bayar.
+
+- Nominal pinjaman/pendapatan lemah secara mandiri, `AMT_INCOME_TOTAL`, `AMT_CREDIT`, dan `AMT_ANNUITY` nyaris tidak membedakan default vs lancar. _Artinya:_ besar-kecilnya pinjaman bukan penentu risiko, yang penting adalah rasio dan perilaku bayar.
+
+- Fitur kategorikal bersinyal lemah sendiri-sendiri, tetapi berguna dalam kombinasi, Profil berisiko tinggi: laki-laki, pendidikan rendah, pekerja kasar (Low-skill Laborers >17%). Chi-Square signifikan tapi Cramér's V kecil. _Artinya:_ model tree-based dapat menggabungkan banyak sinyal lemah ini menjadi segmen risiko yang tajam.
+
+- Missing value dapat digunakan sebagai separator (MNAR). Nasabah tanpa riwayat bureau punya default rate lebih tinggi (10,1% vs 7,7%). _Artinya:_ missing value dijadikan fitur, bukan dibuang atau di-impute sembarangan.
 
 **Fitur agregasi paling berkorelasi dengan risiko** (perilaku kartu kredit mendominasi sisi positif):
 
@@ -91,15 +101,15 @@ Prinsip yang dijaga sepanjang pipeline: **train dan test diproses terpisah** (me
 
 Perbandingan performa antar-tier (skor Out-of-Fold, 5-fold Stratified CV):
 
-| Tier | Model | ROC-AUC | KS |
-|------|-------|:-------:|:--:|
-| 1 | Single Decision Tree (baseline) | 0,7183 | 0,3320 |
-| 2 | LightGBM (default) | 0,7736 | 0,4123 |
-| 3 | **Ensemble Stacking (XGB + LGB + CAT)** | **0,7821** | **0,4266** |
+| Tier | Model                                   |  ROC-AUC   |     KS     |
+| ---- | --------------------------------------- | :--------: | :--------: |
+| 1    | Single Decision Tree (baseline)         |   0,7183   |   0,3320   |
+| 2    | LightGBM (default)                      |   0,7736   |   0,4123   |
+| 3    | **Ensemble Stacking (XGB + LGB + CAT)** | **0,7821** | **0,4266** |
 
 ![Perbandingan performa model per tier](images/model_comparison.png)
 
-*Artinya:* setiap tier memberi peningkatan bertahap. Ensemble stacking menang tipis dan paling stabil — ketiga base model berkontribusi seimbang tanpa dominasi tunggal, menandakan mereka saling melengkapi.
+_Artinya:_ setiap tier memberi peningkatan bertahap. Ensemble stacking menang tipis dan paling stabil — ketiga base model berkontribusi seimbang tanpa dominasi tunggal, menandakan mereka saling melengkapi.
 
 ### 4.3 Evaluation
 
@@ -111,15 +121,14 @@ Perbandingan performa antar-tier (skor Out-of-Fold, 5-fold Stratified CV):
 
 ![Calibration curve](images/eval_calibration.png)
 
-
 - **Daya diskriminasi baik.** ROC-AUC 0,7821 dan KS 0,4266 menunjukkan model mampu memisahkan nasabah lancar dan default secara signifikan. Bootstrap 1.000 sampel memberi CI 95% yang sangat sempit (ROC-AUC [0,779–0,785]), artinya performa stabil dan bukan kebetulan.
 - **Probabilitas terkalibrasi.** Brier score 0,0673 dan calibration curve yang menempel garis ideal berarti angka PD yang dikeluarkan dapat dipercaya sebagai probabilitas riil, bukan sekadar skor ranking — penting untuk keputusan kredit berbasis risiko.
-- **PR-AUC rendah (0,2755) adalah konsekuensi imbalance.** Karena kelas default hanya 8%, precision-recall tertekan. *Artinya:* model unggul dalam **mengurutkan** risiko, tetapi butuh penentuan cut-off yang hati-hati saat dipakai untuk keputusan lolos/tolak.
+- **PR-AUC rendah (0,2755) adalah konsekuensi imbalance.** Karena kelas default hanya 8%, precision-recall tertekan. _Artinya:_ model unggul dalam **mengurutkan** risiko, tetapi butuh penentuan cut-off yang hati-hati saat dipakai untuk keputusan lolos/tolak.
 - **Stabilitas populasi terjaga.** PSI skor akhir train vs test = 0,0031 (Stabil). Satu fitur yang sempat menunjukkan drift ekstrem (`CREDIT_ANNUITY_RATIO`, PSI 1,16) telah dikeluarkan setelah dikonfirmasi sebagai pergeseran distribusi tenor antar-periode, bukan artefak numerik.
 
 ### 4.4 Driver Risiko Utama (SHAP)
 
-`EXT_SOURCE_MEAN` adalah fitur paling berpengaruh: skor rendah mendorong prediksi ke arah default. Driver kuat berikutnya adalah rasio utang di bureau — `BUREAU_DEBT_CREDIT_RATIO_MEAN` yang tinggi menaikkan rata-rata PD sekitar 6,7 poin persen. *Artinya:* model menangkap logika bisnis yang masuk akal — makin besar proporsi utang berjalan, makin tinggi risiko gagal bayar.
+`EXT_SOURCE_MEAN` adalah fitur paling berpengaruh: skor rendah mendorong prediksi ke arah default. Driver kuat berikutnya adalah rasio utang di bureau — `BUREAU_DEBT_CREDIT_RATIO_MEAN` yang tinggi menaikkan rata-rata PD sekitar 6,7 poin persen. _Artinya:_ model menangkap logika bisnis yang masuk akal — makin besar proporsi utang berjalan, makin tinggi risiko gagal bayar.
 
 ![SHAP summary plot](images/shap_summary.png)
 
